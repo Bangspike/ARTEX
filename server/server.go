@@ -73,6 +73,8 @@ type Server struct {
 	// cleared alongside chatBusy under chatMu. Aborting a run does NOT touch the P3
 	// trigger queue — the drain goroutine simply proceeds to the next queued fire.
 	chatCancel map[string]context.CancelCauseFunc
+	// Task ownership for reverse conversations, held until MCP cleanup completes.
+	reverseTaskByChat map[string]string // guarded by chatMu
 
 	// triggerQ buffers P3 trigger fires PER AGENT. A per-agent "pump" launches runs up
 	// to a concurrency limit derived from the agent's策略: serial → limit 1 (+ optional
@@ -217,7 +219,13 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			}
 			return a.TaskTimeoutWrapupMaxTurns, true
 		}
-		wireAgentAugment(m.pg, s.skillDir, s.hostTools) // 可见 skills/MCP + 流量/编排 host 工具装配进 agent 工具集
+		wireAgentAugment(m.pg, s.skillDir, s.hostTools, s.connectAgentMCP) // task-scoped REA evidence retention
+		if err := s.seedReverseAnalyst(); err != nil {
+			log.Printf("[reverse] seed: %v", err)
+		}
+		if err := m.pg.RecoverReverseAnalyses(); err != nil {
+			log.Printf("[reverse] recovery: %v", err)
+		}
 		domainReg := buildDomainReg(m.Assets())
 		wireTools(m.pg, domainReg) // 内置工具表：按 agent 过滤 + 覆盖描述/schema + 注入默认值
 		seedPrompts(m.pg)          // 内置 agent 默认提示词正文播种进 agent_prompts(仅空时)
@@ -864,6 +872,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tools/{key}/reset", s.pgResetTool)
 	// MCP CRUD
 	mux.HandleFunc("GET /api/mcp", s.pgListMCP)
+	mux.HandleFunc("POST /api/tasks/{id}/reverse-analyses", s.createReverseAnalysis)
+	mux.HandleFunc("GET /api/tasks/{id}/reverse-analyses", s.listReverseAnalyses)
+	mux.HandleFunc("GET /api/tasks/{id}/reverse-analyses/{analysis}", s.reverseAnalysisDetail)
+	mux.HandleFunc("POST /api/tasks/{id}/reverse-analyses/{analysis}/stop", s.stopReverseAnalysis)
+	mux.HandleFunc("GET /api/tasks/{id}/reverse-analyses/{analysis}/evidence/{evidence}", s.reverseEvidenceDownload)
 	mux.HandleFunc("POST /api/mcp", s.pgSaveMCP)
 	mux.HandleFunc("DELETE /api/mcp/{id}", s.pgDeleteMCP)
 	mux.HandleFunc("GET /api/mcp/{id}/tools", s.pgMCPTools)

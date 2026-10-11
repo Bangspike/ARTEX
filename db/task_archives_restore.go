@@ -81,6 +81,9 @@ WHERE relation.source_task_id=$1 LIMIT 1`, taskID).Scan(&dependent)
 	if _, err := tx.Exec(`DELETE FROM side_question_sessions WHERE task_id=$1`, taskID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`DELETE FROM reverse_analyses WHERE task_id=$1`, taskID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM findings WHERE task_id=$1`, taskID); err != nil {
 		return err
 	}
@@ -252,7 +255,7 @@ WHERE archive.id=$1 FOR UPDATE OF archive,task`, archiveID).Scan(&taskID, &expID
 	} else {
 		warnings = append(warnings, warning...)
 	}
-	for _, table := range []string{"side_question_sessions", "side_question_requests"} {
+	for _, table := range []string{"side_question_sessions", "side_question_requests", "reverse_analyses", "reverse_analysis_evidence"} {
 		if err := insertArchiveRows(tx, table, remappedTables[table]); err != nil {
 			return nil, fmt.Errorf("restore %s: %w", table, err)
 		}
@@ -362,6 +365,30 @@ func rowExists(tx *sql.Tx, table string, id int64) bool {
 }
 
 func insertArchiveRows(tx *sql.Tx, table string, raw json.RawMessage) error {
+	if table == "reverse_analyses" && len(raw) > 0 {
+		var rows []map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &rows); err != nil {
+			return err
+		}
+		for _, row := range rows {
+			for _, field := range []string{"limitations", "next_steps"} {
+				if len(row[field]) == 0 || string(row[field]) == "null" {
+					row[field] = json.RawMessage(`[]`)
+				}
+			}
+			// Standalone chat history is not owned by the archive. Reports and
+			// task facts remain available without a stale conversation FK.
+			row["conversation_id"] = json.RawMessage(`null`)
+			if string(row["status"]) == `"pending"` || string(row["status"]) == `"running"` {
+				row["status"] = json.RawMessage(`"stopped"`)
+			}
+		}
+		var err error
+		raw, err = json.Marshal(rows)
+		if err != nil {
+			return err
+		}
+	}
 	// json_populate_recordset inserts NULL for absent columns, bypassing SQL
 	// defaults. Preserve compatibility with v3 archives predating side memory.
 	if (table == "side_question_sessions" || table == "side_question_requests") && len(raw) > 0 {
@@ -389,6 +416,7 @@ func insertArchiveRows(tx *sql.Tx, table string, raw json.RawMessage) error {
 		"task_constraints": true, "activity": true, "task_asset_links": true, "findings": true,
 		"llm_records": true, "llm_usage": true, "skill_usage": true, "tool_usage": true,
 		"side_question_sessions": true, "side_question_requests": true,
+		"reverse_analyses": true, "reverse_analysis_evidence": true,
 	}
 	if !allowed[table] {
 		return fmt.Errorf("archive restore table %q is not allowed", table)
