@@ -155,6 +155,7 @@ func (s *Server) pgDeleteTask(w http.ResponseWriter, r *http.Request) {
 	// Main-agent runs use a separate context from planner/workers. Cancel it, then
 	// wait until both execution domains have returned before removing transcripts.
 	s.cancelTaskChat(id, agent.AbortTaskDeleted)
+	s.cancelTaskReverseAnalyses(id)
 	drainCtx, cancelDrain := context.WithTimeout(r.Context(), taskDeleteDrainTimeout)
 	defer cancelDrain()
 	if err := s.waitTaskQuiescent(drainCtx, id); err != nil {
@@ -205,6 +206,12 @@ func (s *Server) waitTaskQuiescent(ctx context.Context, taskID string) error {
 	for {
 		s.chatMu.Lock()
 		chatBusy := s.chatBusy[taskID]
+		for _, owner := range s.reverseTaskByChat {
+			if owner == taskID {
+				chatBusy = true
+				break
+			}
+		}
 		s.chatMu.Unlock()
 		if s.engine.inflightCount(taskID) == 0 && !chatBusy {
 			return nil

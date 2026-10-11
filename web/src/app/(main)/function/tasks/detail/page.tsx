@@ -48,6 +48,7 @@ import { InterceptTab } from "./_tabs/intercept-tab";
 import { OverviewTab } from "./_tabs/overview-tab";
 import { ReportTab } from "./_tabs/report-tab";
 import { RetestsTab } from "./_tabs/retests-tab";
+import { ReverseAnalysisTab } from "./_tabs/reverse-analysis-tab";
 import { SessionsTab } from "./_tabs/sessions-tab";
 
 const TABS = [
@@ -57,6 +58,7 @@ const TABS = [
   { value: "broadcast", label: "播报板" },
   { value: "findings", label: "发现" },
   { value: "retests", label: "复测" },
+  { value: "reverse", label: "逆向分析" },
   { value: "assets", label: "测试资产" },
   { value: "coverage", label: "资产覆盖图" },
   { value: "intercept", label: "拦截审批" },
@@ -434,6 +436,9 @@ function TaskDetailInner() {
         </TabsContent>
         <TabsContent value="retests" className="mt-0">
           <RetestsTab key={id} taskId={id} />
+        </TabsContent>
+        <TabsContent value="reverse" className="mt-0">
+          <ReverseAnalysisTab key={id} taskId={id} />
         </TabsContent>
         <TabsContent value="assets" className="mt-0">
           <AssetsTab taskId={id} />

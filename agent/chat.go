@@ -105,7 +105,7 @@ type chatVars struct{ DataDir, Now string }
 func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message string, maxTurns int, maxDuration time.Duration, webSearch bool, emit func(db.Activity)) (string, error) {
 	// gate the global web-search opts by this agent's own flag.
 	ws := c.webSearch
-	if !webSearch {
+	if !webSearch || agentKey == db.ReverseAnalystKey {
 		ws.Enabled = false
 	}
 
@@ -119,6 +119,11 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	// visible skills/MCP and lets the DB tools table filter/override. DefaultTools
 	// have no tools-table rows, so they always pass through.
 	base := actool.DefaultTools()
+	// Task-bound reverse analysis uses only its audited MCP tools and report
+	// tools; generic shell/file tools would bypass the selected input snapshot.
+	if agentKey == db.ReverseAnalystKey {
+		base = nil
+	}
 	ctx = WithRunInfo(ctx, RunInfo{SessionID: sessionID})
 	tools, def, cleanup := AugmentTools(ctx, agentKey, base)
 	defer cleanup()
@@ -132,7 +137,7 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		DeferredTools:   def.Deferred,
 		UnlockSet:       def.Unlock,
 		PermissionMode:  permission.ModeBypass,
-		EnableWebFetch:  true, // 走记录代理留痕；载入代理 CA 验证 MITM 重签的 HTTPS 证书
+		EnableWebFetch:  agentKey != db.ReverseAnalystKey, // reverse analysis is local-artifact only
 		WebFetchProxy:   c.proxyAddr,
 		WebFetchCACert:  c.proxyCACert,
 		// 联网搜索(可选)。ddgs 无需 key；brave-free 需 BraveKey；tavily 需 TavilyKey。

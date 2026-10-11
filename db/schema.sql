@@ -1384,3 +1384,36 @@ CREATE INDEX IF NOT EXISTS idx_notification_deliveries_batch
     ON notification_deliveries(batch_id) WHERE batch_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_notification_deliveries_channel
     ON notification_deliveries(channel_id, id DESC);
+
+-- Task-owned reverse analysis. Evidence stays separate from confirmed findings.
+CREATE TABLE IF NOT EXISTS reverse_analyses (
+    id TEXT PRIMARY KEY,
+    task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    conversation_id BIGINT UNIQUE REFERENCES conversations(id) ON DELETE SET NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('javascript','native')),
+    input_path TEXT NOT NULL,
+    input_sha256 TEXT NOT NULL,
+    objective TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','running','completed','partial','failed','stopped')),
+    summary TEXT NOT NULL DEFAULT '',
+    report TEXT NOT NULL DEFAULT '',
+    limitations JSONB NOT NULL DEFAULT '[]',
+    next_steps JSONB NOT NULL DEFAULT '[]',
+    fact_node_id BIGINT REFERENCES exploration_nodes(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_reverse_analyses_task ON reverse_analyses(task_id,created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_reverse_analysis_active ON reverse_analyses(task_id) WHERE status IN ('pending','running');
+CREATE TABLE IF NOT EXISTS reverse_analysis_evidence (
+    id TEXT PRIMARY KEY,
+    analysis_id TEXT NOT NULL REFERENCES reverse_analyses(id) ON DELETE CASCADE,
+    tool TEXT NOT NULL,
+    arguments JSONB NOT NULL,
+    path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    rea_evidence_id TEXT NOT NULL DEFAULT '',
+    is_error BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_reverse_evidence_analysis ON reverse_analysis_evidence(analysis_id,created_at);

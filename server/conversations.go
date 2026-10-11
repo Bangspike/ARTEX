@@ -499,11 +499,23 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 		s.chatMu.Lock()
 		delete(s.chatBusy, busyKey)
 		delete(s.chatCancel, busyKey)
+		delete(s.reverseTaskByChat, busyKey)
 		s.chatMu.Unlock()
 	}()
 	// Only the first turn executes a historical retest. Follow-up conversation
 	// turns may explain the sealed result; the result tool refuses to overwrite it.
 	finishStatus, finishReason := "failed", "复测未能启动"
+	if c.AgentKey == db.ReverseAnalystKey {
+		finishReason = ""
+		defer func() { s.finishReverseConversation(c.ID, ctx, finishReason) }()
+		started, err := s.m.pg.StartReverseAnalysis(ctx, c.ID)
+		if err != nil || !started {
+			if err != nil {
+				finishReason = err.Error()
+			}
+			return
+		}
+	}
 	if c.AgentKey == db.FindingRetestAgentKey {
 		// Read without the run cancellation so an immediate stop still seals pending.
 		r, err := s.m.pg.FindingRetestForConversation(context.Background(), c.ID)

@@ -232,7 +232,52 @@ function interceptPageQuery(page: number, size: number, filter: InterceptApprova
   return query.toString();
 }
 
+export interface ReverseAnalysis {
+  id: string;
+  task_id: number;
+  conversation_id: number;
+  kind: "javascript" | "native";
+  input_path: string;
+  input_sha256: string;
+  objective: string;
+  status: "pending" | "running" | "completed" | "partial" | "failed" | "stopped";
+  summary: string;
+  report: string;
+  limitations: string[] | null;
+  next_steps: string[] | null;
+  fact_node_id: number;
+}
+
+export interface ReverseEvidence {
+  id: string;
+  tool: string;
+  sha256: string;
+  rea_evidence_id: string;
+  is_error: boolean;
+}
+
 export const api = {
+  reverseAnalyses: (task: string) => get<{ analyses: ReverseAnalysis[] }>(`/tasks/${task}/reverse-analyses`),
+  startReverseAnalysis: (
+    task: string,
+    body: { kind: "javascript" | "native"; input_path: string; objective: string },
+  ) => post<ReverseAnalysis>(`/tasks/${task}/reverse-analyses`, body),
+  reverseAnalysis: (task: string, id: string) =>
+    get<{ analysis: ReverseAnalysis; evidence: ReverseEvidence[] }>(`/tasks/${task}/reverse-analyses/${id}`),
+  stopReverseAnalysis: (task: string, id: string) => post(`/tasks/${task}/reverse-analyses/${id}/stop`),
+  downloadReverseEvidence: async (task: string, analysis: string, evidence: string) => {
+    const token = getToken();
+    const r = await fetch(`/api/tasks/${task}/reverse-analyses/${analysis}/evidence/${evidence}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!r.ok) throw new Error("证据下载失败，请检查文件完整性或登录状态");
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${evidence}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
   // 后端应用版本号（release 时由 ldflags 注入，默认 "dev"）。
   health: () => get<{ ok: boolean; service: string; version: string }>("/health"),
 
@@ -825,8 +870,7 @@ export const api = {
   // 渠道是多实例资源（同一类型可配多个机器人、各有过滤规则），因此独立成组，
   // 不塞进扁平的 settings 键值里。
   notifyMeta: () => get<NotificationMeta>(`/notify/meta`),
-  notifyChannels: () =>
-    get<{ channels: NotificationChannel[] }>(`/notify/channels`).then((r) => arr(r.channels)),
+  notifyChannels: () => get<{ channels: NotificationChannel[] }>(`/notify/channels`).then((r) => arr(r.channels)),
   notifyCreateChannel: (payload: {
     name: string;
     kind: string;

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/mcphttp"
+	"github.com/Autumn-27/artex/mcpstdio"
 	"github.com/Autumn-27/norma/mcp"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -26,6 +27,9 @@ func connectMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) {
 	case "stdio":
 		if m.Command == "" {
 			return nil, fmt.Errorf("stdio 传输缺少命令")
+		}
+		if m.Name == "rea" {
+			return mcpstdio.New(ctx, m.Name, m.Command, jsonStrMap(m.Env), jsonStrSlice(m.Args)...)
 		}
 		return mcp.NewStdioClient(ctx, m.Name, m.Command, jsonStrMap(m.Env), jsonStrSlice(m.Args)...)
 	case "http":
