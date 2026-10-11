@@ -98,6 +98,11 @@ docker compose up -d          # 拉取 autumn27/artex 镜像 + postgres
 `/message?sessionId=...` 接收 JSON-RPC 请求；配置时将 URL 填为 `/sse`，请求头按
 `Authorization=Bearer <token>` 填写。
 
+通用 OnlineSim 接码 MCP 位于 [`services/onlinesim-mcp`](services/onlinesim-mcp/README.md)，
+默认使用离线模拟供应商，支持印度短期接码、持久化订单及后台清理。该服务是独立 Go 模块，
+构建和测试请在其目录内执行。需要按任务隔离时，将 MCP 请求头
+`X-ARTEX-Task-ID` 配置为 `{{task_id}}`，由后端注入当前任务身份。
+
 ### 方式三：下载预编译二进制（Releases）
 
 到 [Releases](https://github.com/Autumn-27/ARTEX/releases) 下载对应平台的 zip，解压后得到 `artex` + `start.sh`（Windows 为 `start.bat`）+ `skills/` + `config.example.json`：

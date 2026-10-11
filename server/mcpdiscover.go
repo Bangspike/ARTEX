@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
+	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/mcphttp"
 	"github.com/Autumn-27/norma/mcp"
@@ -22,26 +24,47 @@ type mcpClient interface {
 
 // connectMCP dials one MCP server per its transport. Callers must Close the client.
 func connectMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) {
+	env := mcpEnvForRun(ctx, m)
 	switch m.Transport {
 	case "stdio":
 		if m.Command == "" {
 			return nil, fmt.Errorf("stdio 传输缺少命令")
 		}
-		return mcp.NewStdioClient(ctx, m.Name, m.Command, jsonStrMap(m.Env), jsonStrSlice(m.Args)...)
+		return mcp.NewStdioClient(ctx, m.Name, m.Command, env, jsonStrSlice(m.Args)...)
 	case "http":
 		if m.URL == "" {
 			return nil, fmt.Errorf("http 传输缺少 URL")
 		}
 		// env map doubles as HTTP headers (e.g. Authorization).
-		return mcphttp.New(ctx, m.Name, m.URL, jsonStrMap(m.Env), m.Insecure)
+		return mcphttp.New(ctx, m.Name, m.URL, env, m.Insecure)
 	case "sse":
 		if m.URL == "" {
 			return nil, fmt.Errorf("sse 传输缺少 URL")
 		}
-		return mcphttp.NewSSE(ctx, m.Name, m.URL, jsonStrMap(m.Env), m.Insecure)
+		return mcphttp.NewSSE(ctx, m.Name, m.URL, env, m.Insecure)
 	default:
 		return nil, fmt.Errorf("未知传输方式 %q", m.Transport)
 	}
+}
+
+// mcpEnvForRun resolves task identity only in the two opt-in identity fields.
+// All other configuration (including credentials) stays literal. A copied map
+// keeps simultaneous workers from mutating the persisted MCP configuration.
+func mcpEnvForRun(ctx context.Context, m *db.MCPServer) map[string]string {
+	env := jsonStrMap(m.Env)
+	ri := agent.RunInfoFrom(ctx)
+	identity := "discovery"
+	if ri.TaskID > 0 {
+		identity = strconv.FormatInt(ri.TaskID, 10)
+	} else if ri.SessionID != "" {
+		identity = "chat:" + ri.SessionID
+	}
+	for _, key := range []string{"ARTEX_TASK_ID", "X-ARTEX-Task-ID"} {
+		if env[key] == "{{task_id}}" {
+			env[key] = identity
+		}
+	}
+	return env
 }
 
 // discoverAndCacheMCP connects to one MCP, lists its tools, and persists the tool

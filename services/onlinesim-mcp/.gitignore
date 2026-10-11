@@ -1,0 +1,4 @@
+/data/
+/onlinesim-mcp
+.env
+*.test
