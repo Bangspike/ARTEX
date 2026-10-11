@@ -1,0 +1,11 @@
+{
+  "name": "onlinesim",
+  "transport": "http",
+  "url": "http://127.0.0.1:8790/mcp",
+  "env": {
+    "Authorization": "Bearer <configure-service-token>",
+    "X-ARTEX-Task-ID": "{{task_id}}"
+  },
+  "enabled": false,
+  "insecure": false
+}
